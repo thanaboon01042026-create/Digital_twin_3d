@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI & True 3D Digital Twin Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* Header */
+        header { background-color: #1e293b; padding: 15px 20px; border-bottom: 2px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        header h1 { font-size: 20px; color: #38bdf8; font-weight: bold; }
+        .status-badge { background-color: #22c55e; padding: 6px 14px; border-radius: 15px; font-size: 13px; font-weight: bold; transition: 0.3s; }
+
+        /* Layout 3 คอลัมน์ */
+        .main-container { display: grid; grid-template-columns: 340px 1fr 380px; flex: 1; overflow: hidden; }
+
+        /* คอลัมน์ซ้าย: ฟอร์มกรอกข้อมูล */
+        .panel-input { background-color: #1e293b; padding: 20px; border-right: 1px solid #334155; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 13px; color: #94a3b8; font-weight: bold; text-transform: uppercase; }
+        input, select, textarea { background-color: #0f172a; border: 1px solid #475569; padding: 11px; border-radius: 6px; color: white; font-size: 14px; }
+        
+        button { background-color: #475569; color: white; border: none; padding: 14px; border-radius: 6px; font-weight: bold; cursor: not-allowed; font-size: 14px; margin-top: 10px; transition: 0.2s; }
+        .btn-reset { background: #334155 !important; margin-top: 4px; cursor: pointer !important; }
+
+        /* คอลัมน์กลาง: หน้าจอ 3D คลีนๆ (ไม่มีป้ายหรือเส้น 2D มาบังเด็ดขาด) */
+        .panel-visual { position: relative; background-color: #020617; flex: 1; height: 100%; overflow: hidden; }
+        #canvas3d { width: 100%; height: 100%; display: block; }
+
+        .system-log {
+            position: absolute; bottom: 15px; left: 15px;
+            background: rgba(15, 23, 42, 0.9); padding: 10px 15px;
+            border-radius: 6px; border: 1px solid #334155;
+            font-size: 12px; color: #94a3b8; z-index: 99;
+        }
+
+        /* คอลัมน์ขวา: สไลด์พรีเซนต์ที่ AI วิเคราะห์ */
+        .panel-output { background-color: #1e293b; padding: 20px; border-left: 1px solid #334155; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .slide { background: #0f172a; border-radius: 8px; padding: 16px; border-left: 4px solid #475569; display: none; }
+        .slide.active { display: block; border-left-color: #ef4444; }
+        .slide-title { color: #38bdf8; font-size: 14px; margin-bottom: 8px; font-weight: bold; }
+        .slide-body  { font-size: 13px; color: #cbd5e1; line-height: 1.6; white-space: pre-line; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Smart Asset Twin: Data Junction & AI Diagnostics</h1>
+    <div class="status-badge" id="system-status">3D ENGINE LOADING...</div>
+</header>
+
+<div class="main-container">
+
+    <div class="panel-input">
+        <h3 style="color:#f1f5f9;font-size:16px;">Data Entry Junction</h3>
+        <div class="form-group">
+            <label>Target Machine Asset</label>
+            <select disabled><option>Main Press Machine (Scanned Asset)</option></select>
+        </div>
+        <div class="form-group">
+            <label>Select Problem Component</label>
+            <select id="input-component">
+                <option value="Motor">Conveyor Motor (มอเตอร์สายพาน)</option>
+                <option value="Controller">Main Controller (ตู้คอนโทรลระบบ)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>TRP Current (%)</label>
+            <input type="number" id="input-trp" value="55">
+        </div>
+        <div class="form-group">
+            <label>DLE Current (%)</label>
+            <input type="number" id="input-dle" value="70">
+        </div>
+        <div class="form-group">
+            <label>QRAP Issue Logs</label>
+            <textarea id="input-qrap" rows="4">ตรวจพบความร้อนสะสมเกินพิกัดมาตรฐาน ทำให้ระบบ Safety ตัดการทำงานอัตโนมัติ ส่งผลให้เกิด Toploss ชนิดไลน์หยุดนิ่ง</textarea>
+        </div>
+        
+        <button id="btn-submit" onclick="window.doSubmit()" disabled>Loading 3D Assets...</button>
+        <button class="btn-reset" onclick="window.doReset()">Reset Status</button>
+    </div>
+
+    <div class="panel-visual">
+        <canvas id="canvas3d"></canvas>
+        
+        <div class="system-log">
+            <span id="log-text">🔵 Connecting to Spline Engine Runtime...</span>
+        </div>
+    </div>
+
+    <div class="panel-output">
+        <h3 style="color:#f1f5f9;font-size:16px;">AI Executive Presentation</h3>
+        <p id="standby-text" style="color:#64748b;font-size:14px;text-align:center;margin-top:40px;">
+            ระบบ Standby<br>กรุณากดปุ่มเพื่อรับข้อมูลจากคลังปัญหา QRAP
+        </p>
+        <div class="slide" id="slide-1">
+            <div class="slide-title">Slide 1: สาเหตุรากเหง้าปัญหา (Root Cause)</div>
+            <div class="slide-body" id="s1"></div>
+        </div>
+        <div class="slide" id="slide-2">
+            <div class="slide-title">Slide 2: ผลกระทบประสิทธิภาพ (KPI Impact)</div>
+            <div class="slide-body" id="s2"></div>
+        </div>
+        <div class="slide" id="slide-3">
+            <div class="slide-title">Slide 3: แผนปฏิบัติการหน้างาน (Action Plan)</div>
+            <div class="slide-body" id="s3"></div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { Application } from 'https://unpkg.com/@splinetool/runtime@1.12.95/build/runtime.js';
+
+    let splineApp = null;
+    let blinkInterval = null;
+
+    // 1. ผูกมัดระบบเข้ากับพื้นที่ Canvas3D
+    const canvas = document.getElementById('canvas3d');
+    const app = new Application(canvas);
+
+    // 2. สั่งโหลดโมเดลเครื่องปั๊มของคุณ
+    app.load('https://prod.spline.design/te8GgdA1x08LzabU/scene.splinecode')
+        .then(() => {
+            splineApp = app;
+            
+            // ปลดล็อกปุ่มให้ใช้งานได้ทันทีเมื่อโครงสร้าง 3D พร้อมทำงาน
+            const submitBtn = document.getElementById('btn-submit');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.style.backgroundColor = "#0284c7";
+                submitBtn.style.cursor = "pointer";
+                submitBtn.innerText = "Submit Data & Analyze";
+            }
+
+            document.getElementById('system-status').innerText = "MACHINE STATUS: NORMAL";
+            document.getElementById('log-text').innerText = "✅ 3D Engine Ready. Control link established!";
+            
+            // สถานะปกติ: สั่งซ่อน (Hide) ก้อนวัตถุสีแดงเตือนภัยทั้งสองชิ้นไว้ก่อน
+            hideAllAlerts();
+        })
+        .catch((err) => {
+            document.getElementById('log-text').innerText = "❌ Load Error: " + err.message;
+        });
+
+    // ฟังก์ชันสั่งซ่อนวัตถุแจ้งเตือนทั้งหมดในโลก 3D (สภาวะปกติ)
+    function hideAllAlerts() {
+        if (!splineApp) return;
+        try {
+            const motor3D = splineApp.findObjectByName('Motor');
+            const controller3D = splineApp.findObjectByName('Controller');
+            if (motor3D) motor3D.visible = false;
+            if (controller3D) controller3D.visible = false;
+        } catch(e) {
+            console.log("Error resetting states:", e);
+        }
+    }
+
+    // 🎯 ฟังก์ชันการส่งข้อมูลเข้าปุ่ม และสั่งกะพริบวัตถุ 3D แท้ๆ ด้วยคุณสมบัติ .visible
+    window.doSubmit = function() {
+        if (!splineApp) return;
+
+        const comp   = document.getElementById('input-component').value; // ค่า "Motor" หรือ "Controller"
+        const compTH = comp === 'Motor' ? 'มอเตอร์สายพาน' : 'ตู้คอนโทรลระบบ';
+        const trp    = document.getElementById('input-trp').value;
+        const dle    = document.getElementById('input-dle').value;
+        const qrap   = document.getElementById('input-qrap').value;
+
+        // ล้างลูปกะพริบเก่าออกก่อนเพื่อป้องกันโค้ดตีกัน
+        if (blinkInterval) clearInterval(blinkInterval);
+
+        // เปลี่ยนแถบเมนูด้านบนเป็นสีแดงแจ้งเตือนวิกฤต
+        document.getElementById('system-status').innerText = 'CRITICAL ANOMALY: ' + comp.toUpperCase();
+        document.getElementById('system-status').style.backgroundColor = '#ef4444';
+
+        try {
+            // ซ่อนวัตถุชิ้นอื่นให้ดับไปก่อน
+            hideAllAlerts();
+
+            // ค้นหาวัตถุสีแดงตามชื่อที่เราเลือก (Motor หรือ Controller)
+            const targetObject = splineApp.findObjectByName(comp);
+            
+            if (targetObject) {
+                document.getElementById('log-text').innerText = `🔴 Blinking Active: Toggling Visibility (.visible) on [${comp}]`;
+                
+                // 🔄 ลูปสลับสถานะ ติด-ดับ-ติด-ดับ (true / false) ของวัตถุ 3D ชิ้นนั้นโดยตรง ทุกๆ 400 มิลลิวินาที
+                blinkInterval = setInterval(() => {
+                    targetObject.visible = !targetObject.visible;
+                }, 400);
+            } else {
+                document.getElementById('log-text').innerText = `⚠️ ไม่พบเลเยอร์ชื่อ '${comp}' ในโมเดลของคุณ กรุณาเช็กตัวสะกดใน Spline`;
+            }
+        } catch (error) {
+            console.error("Runtime component conflict: ", error);
+        }
+
+        // 3. ปล่อยข้อความส่งรายงานบทวิเคราะห์เข้าสไลด์ฝั่งขวา
+        document.getElementById('standby-text').style.display = 'none';
+        document.getElementById('s1').innerText = `• ตรวจพบปัญหาวิกฤตที่ชิ้นส่วนย่อย: ${compTH} (${comp})\n• รายละเอียดจาก QRAP: "${qrap}"\n• จัดหมวดหมู่: Equipment Breakdown`;
+        document.getElementById('s2').innerText = `• ค่า TRP ปัจจุบัน: ${trp}%\n• DLE ตกเหลือ ${dle}% เนื่องจาก Waiting Time\n• ประเภทความสูญเสีย: Toploss - Unplanned Maintenance`;
+        document.getElementById('s3').innerText = `1. แจ้งทีมซ่อมบำรุงมุ่งตรงไปที่ชิ้นส่วน ${compTH} หน้างานด่วน\n2. ตัดกระแสไฟฟ้าและปฏิบัติตาม LOTO Safety\n3. Supervisor โยกย้ายกำลังพลรักษาสมดุล DLE รวม`;
+
+        ['slide-1','slide-2','slide-3'].forEach(id => document.getElementById(id).classList.add('active'));
+    };
+
+    // ฟังก์ชันปุ่มรีเซ็ตระบบ
+    window.doReset = function() {
+        if (blinkInterval) clearInterval(blinkInterval);
+        
+        document.getElementById('system-status').innerText = 'MACHINE STATUS: STANDBY';
+        document.getElementById('system-status').style.backgroundColor = '#22c55e';
+        document.getElementById('log-text').innerText = '🔵 3D Mesh Reset. All warning blocks hidden.';
+        document.getElementById('standby-text').style.display  = 'block';
+        
+        ['slide-1','slide-2','slide-3'].forEach(id => document.getElementById(id).classList.remove('active'));
+
+        // สั่งดับไฟแดงและซ่อนวัตถุแจ้งเตือนทั้งหมดกลับสู่สภาวะปกติ
+        hideAllAlerts();
+    };
+</script></body>
+</html>
