@@ -160,7 +160,7 @@
         }
     }
 
-    // 🎯 ท่ารับข้อมูลแกนกลาง (รับข้อความ String JSON มาถอดรหัสแล้วสั่งกะพริบตา 3D)
+    // 🎯 ฟังก์ชันหลักสำหรับประมวลผล Object ข้อมูล
     window.processTwinData = function(data) {
         if (!splineApp) return;
 
@@ -180,7 +180,7 @@
             const targetObject = splineApp.findObjectByName(comp);
             
             if (targetObject) {
-                document.getElementById('log-text').innerText = `🔴 Cloud Event Received: Blinking Active on [${comp}]`;
+                document.getElementById('log-text').innerText = `🔴 Signal Received: Blinking Active on [${comp}]`;
                 
                 blinkInterval = setInterval(() => {
                     targetObject.visible = !targetObject.visible;
@@ -199,6 +199,16 @@
         document.getElementById('s3').innerText = `1. แจ้งทีมซ่อมบำรุงมุ่งตรงไปที่ชิ้นส่วน ${compTH} หน้างานด่วน\n2. ตัดกระแสไฟฟ้าและปฏิบัติตาม LOTO Safety\n3. Supervisor โยกย้ายกำลังพลรักษาสมดุล DLE รวม`;
 
         ['slide-1','slide-2','slide-3'].forEach(id => document.getElementById(id).classList.add('active'));
+    };
+
+    // ✨ คืนชีพปุ่มรับค่าจาก Console (รับข้อความ String JSON แล้วแกะส่งต่อให้อัตโนมัติ)
+    window.connectTwin = function(jsonString) {
+        try {
+            const data = JSON.parse(jsonString);
+            window.processTwinData(data);
+        } catch (e) {
+            document.getElementById('log-text').innerText = "❌ รูปแบบ String JSON ใน Console ไม่ถูกต้อง";
+        }
     };
 
     // 📡 ฟังก์ชันเปิดท่อเชื่อมต่อคลาวด์ MQTT Broker (HiveMQ)
@@ -229,7 +239,7 @@
         });
     }
 
-    // ซ่อมฟังก์ชันปุ่มกดแมนนวลให้โยนค่าเข้าท่อประมวลผลเดียวกัน
+    // ฟังก์ชันปุ่มกดแมนนวลหน้าเว็บ
     window.doSubmit = function() {
         const payload = {
             component: document.getElementById('input-component').value,
