@@ -116,17 +116,33 @@
 
     let splineApp = null;
     let blinkInterval = null;
+    const topic = "thanaboon/digitaltwin/dash"; // ชื่อห้อง Topic สำหรับรับข้อมูล
 
     const canvas = document.getElementById('canvas3d');
     const app = new Application(canvas);
 
-    // โหลดโมเดล 3D
+    // 1. สั่งโหลดโมเดลเครื่องปั๊ม 3D เข้ามาทำงาน
     app.load('https://prod.spline.design/te8GgdA1x08LzabU/scene.splinecode')
         .then(() => {
             splineApp = app;
+            
+            // ซ่อมปุ่มกด Submit บนหน้าเว็บให้แสดงผลปกติ
+            const submitBtn = document.getElementById('btn-submit');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.style.backgroundColor = "#0284c7";
+                submitBtn.style.cursor = "pointer";
+                submitBtn.innerText = "Submit Data & Analyze";
+            }
+
             document.getElementById('system-status').innerText = "MACHINE STATUS: ONLINE";
-            document.getElementById('log-text').innerText = "✅ 3D Engine Ready. Awaiting Connection...";
+            document.getElementById('system-status').style.backgroundColor = '#22c55e';
+            document.getElementById('log-text').innerText = "✅ 3D Engine Ready. Connecting to MQTT Cloud...";
+            
             hideAllAlerts();
+            
+            // 📡 เริ่มรันระบบดักฟัง MQTT ทันทีที่โมเดล 3D โหลดเสร็จพร้อมใช้งาน
+            initMQTTReceiver();
         })
         .catch((err) => {
             document.getElementById('log-text').innerText = "❌ Load Error: " + err.message;
@@ -139,61 +155,81 @@
             const controller3D = splineApp.findObjectByName('Controller');
             if (motor3D) motor3D.visible = false;
             if (controller3D) controller3D.visible = false;
-        } catch(e) { console.log(e); }
+        } catch(e) {
+            console.log("Error resetting states:", e);
+        }
     }
 
-    // 🎯 ท่ารับข้อมูลหลัก (Expose เป็น Global ให้ระบบอื่นเรียกใช้ได้)
-    window.connectTwin = function(jsonString) {
-        if (!splineApp) {
-            console.log("3D Engine ยังโหลดไม่เสร็จ!");
-            return;
-        }
+    // 🎯 ท่ารับข้อมูลแกนกลาง (รับข้อความ String JSON มาถอดรหัสแล้วสั่งกะพริบตา 3D)
+    window.processTwinData = function(data) {
+        if (!splineApp) return;
+
+        const comp   = data.component; 
+        const compTH = comp === 'Motor' ? 'มอเตอร์สายพาน' : 'ตู้คอนโทรลระบบ';
+        const trp    = data.trp || 0;
+        const dle    = data.dle || 0;
+        const qrap   = data.qrap || "";
+
+        if (blinkInterval) clearInterval(blinkInterval);
+
+        document.getElementById('system-status').innerText = 'CRITICAL ANOMALY: ' + comp.toUpperCase();
+        document.getElementById('system-status').style.backgroundColor = '#ef4444';
 
         try {
-            // แปลง String ที่ส่งมาให้กลายเป็น Object JSON
-            const data = JSON.parse(jsonString);
-            
-            const comp   = data.component; // คาดหวังค่า: "Motor" หรือ "Controller"
-            const compTH = comp === 'Motor' ? 'มอเตอร์สายพาน' : 'ตู้คอนโทรลระบบ';
-            const trp    = data.trp || 0;
-            const dle    = data.dle || 0;
-            const qrap   = data.qrap || "ไม่มี Log ปัญหา";
-
-            // ล้างลูปเก่า
-            if (blinkInterval) clearInterval(blinkInterval);
-
-            // เปลี่ยนแถบสถานะด้านบน
-            document.getElementById('system-status').innerText = 'CRITICAL ANOMALY: ' + comp.toUpperCase();
-            document.getElementById('system-status').style.backgroundColor = '#ef4444';
-
-            // สั่งกะพริบในโลก 3D
             hideAllAlerts();
             const targetObject = splineApp.findObjectByName(comp);
             
             if (targetObject) {
-                document.getElementById('log-text').innerText = `🔴 Signal Received: Blinking on [${comp}]`;
+                document.getElementById('log-text').innerText = `🔴 Cloud Event Received: Blinking Active on [${comp}]`;
+                
                 blinkInterval = setInterval(() => {
                     targetObject.visible = !targetObject.visible;
                 }, 400);
             } else {
                 document.getElementById('log-text').innerText = `⚠️ ไม่พบเลเยอร์ชื่อ '${comp}' ในโมเดล 3D`;
             }
-
-            // อัปเดตสไลด์รายงานด้านขวา
-            document.getElementById('standby-text').style.display = 'none';
-            document.getElementById('s1').innerText = `• ตรวจพบปัญหาวิกฤตที่ชิ้นส่วนย่อย: ${compTH} (${comp})\n• รายละเอียดจาก QRAP: "${qrap}"\n• จัดหมวดหมู่: Equipment Breakdown`;
-            document.getElementById('s2').innerText = `• ค่า TRP ปัจจุบัน: ${trp}%\n• DLE ตกเหลือ ${dle}% เนื่องจาก Waiting Time\n• ประเภทความสูญเสีย: Toploss - Unplanned Maintenance`;
-            document.getElementById('s3').innerText = `1. แจ้งทีมซ่อมบำรุงมุ่งตรงไปที่ชิ้นส่วน ${compTH} หน้างานด่วน\n2. ตัดกระแสไฟฟ้าและปฏิบัติตาม LOTO Safety\n3. Supervisor โยกย้ายกำลังพลรักษาสมดุล DLE รวม`;
-
-            ['slide-1','slide-2','slide-3'].forEach(id => document.getElementById(id).classList.add('active'));
-
         } catch (error) {
-            document.getElementById('log-text').innerText = "❌ รูปแบบ String JSON ไม่ถูกต้อง!";
             console.error(error);
         }
+
+        // ปลดปล่อยรายงานวิเคราะห์และแสดงผลสไลด์ด้านขวา
+        document.getElementById('standby-text').style.display = 'none';
+        document.getElementById('s1').innerText = `• ตรวจพบปัญหาวิกฤตที่ชิ้นส่วนย่อย: ${compTH} (${comp})\n• รายละเอียดจาก QRAP: "${qrap}"\n• จัดหมวดหมู่: Equipment Breakdown`;
+        document.getElementById('s2').innerText = `• ค่า TRP ปัจจุบัน: ${trp}%\n• DLE ตกเหลือ ${dle}% เนื่องจาก Waiting Time\n• ประเภทความสูญเสีย: Toploss - Unplanned Maintenance`;
+        document.getElementById('s3').innerText = `1. แจ้งทีมซ่อมบำรุงมุ่งตรงไปที่ชิ้นส่วน ${compTH} หน้างานด่วน\n2. ตัดกระแสไฟฟ้าและปฏิบัติตาม LOTO Safety\n3. Supervisor โยกย้ายกำลังพลรักษาสมดุล DLE รวม`;
+
+        ['slide-1','slide-2','slide-3'].forEach(id => document.getElementById(id).classList.add('active'));
     };
 
-    // ปุ่มกดส่งข้อมูลแมนนวลหน้าเว็บ (ปรับให้เรียกใช้ฟังก์ชันกลางเหมือนกัน)
+    // 📡 ฟังก์ชันเปิดท่อเชื่อมต่อคลาวด์ MQTT Broker (HiveMQ)
+    function initMQTTReceiver() {
+        const client = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), "/mqtt", "visual_rcv_" + parseInt(Math.random() * 100));
+
+        client.onConnectionLost = function() {
+            document.getElementById('log-text').innerText = "🔌 MQTT Connection Lost. Reconnecting...";
+            setTimeout(initMQTTReceiver, 3000);
+        };
+
+        client.onMessageArrived = function(message) {
+            try {
+                // แกะกล่องข้อความ String ให้กลายเป็น Object JSON แล้วส่งเข้าฟังก์ชันแกนหลัก
+                const data = JSON.parse(message.payloadString);
+                window.processTwinData(data);
+            } catch (e) {
+                document.getElementById('log-text').innerText = "⚠️ ข้อความที่ส่งมาจากคลาวด์ไม่ใช่ JSON Format";
+            }
+        };
+
+        client.connect({
+            useSSL: true,
+            onSuccess: function() {
+                document.getElementById('log-text').innerText = "📡 Connected to Cloud! Awaiting Brain Stream...";
+                client.subscribe(topic);
+            }
+        });
+    }
+
+    // ซ่อมฟังก์ชันปุ่มกดแมนนวลให้โยนค่าเข้าท่อประมวลผลเดียวกัน
     window.doSubmit = function() {
         const payload = {
             component: document.getElementById('input-component').value,
@@ -201,15 +237,18 @@
             dle: document.getElementById('input-dle').value,
             qrap: document.getElementById('input-qrap').value
         };
-        window.connectTwin(JSON.stringify(payload));
+        window.processTwinData(payload);
     };
 
+    // ฟังก์ชันรีเซ็ตสถานะหน้าจอ
     window.doReset = function() {
         if (blinkInterval) clearInterval(blinkInterval);
+        
         document.getElementById('system-status').innerText = 'MACHINE STATUS: ONLINE';
         document.getElementById('system-status').style.backgroundColor = '#22c55e';
-        document.getElementById('log-text').innerText = '🔵 3D Mesh Reset. Ready for input...';
+        document.getElementById('log-text').innerText = '🔵 3D Mesh Reset. Listening to Cloud...';
         document.getElementById('standby-text').style.display  = 'block';
+        
         ['slide-1','slide-2','slide-3'].forEach(id => document.getElementById(id).classList.remove('active'));
         hideAllAlerts();
     };
