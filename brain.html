@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>🧠 Digital Twin: Brain Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 40px; text-align: center; }
+        .card { background: #1e293b; border-radius: 12px; padding: 30px; max-width: 500px; margin: 0 auto; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+        h1 { color: #38bdf8; font-size: 24px; margin-bottom: 10px; }
+        #status { font-weight: bold; padding: 10px; border-radius: 6px; margin: 20px 0; background: #475569; transition: 0.3s; }
+        #log { text-align: left; background: #0f172a; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 13px; height: 180px; overflow-y: auto; color: #34d399; border: 1px solid #334155; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>🧠 Brain Simulator</h1>
+    <p style="color: #94a3b8;">ระบบจำลองสตรีมค่าเซ็นเซอร์อัตโนมัติ ทุก ๆ 5 วินาที</p>
+    
+    <div id="status">🔄 กำลังต่อท่อเข้าสู่ Cloud Broker...</div>
+    
+    <h3 style="text-align: left; font-size: 14px; color: #94a3b8; margin-bottom: 5px;">Data Stream Log:</h3>
+    <div id="log"></div>
+</div>
+
+<script>
+    const logDiv = document.getElementById('log');
+    const statusDiv = document.getElementById('status');
+    const topic = "thanaboon/digitaltwin/dash"; // พ่นข้อมูลเข้าท่อเดียวกับที่เว็บ 3D ดักฟังอยู่
+
+    function addLog(text) {
+        const time = new Date().toLocaleTimeString();
+        logDiv.innerHTML += `[${time}] ${text}<br>`;
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // ต่อเข้า HiveMQ Public Broker ผ่าน Secure WebSocket พอร์ต 8884
+    const client = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), "/mqtt", "brain_sim_" + parseInt(Math.random() * 100));
+
+    client.onConnectionLost = function() {
+        statusDiv.innerText = "❌ การเชื่อมต่อหลุด! กำลังลองใหม่...";
+        statusDiv.style.backgroundColor = "#ef4444";
+    };
+
+    client.connect({
+        useSSL: true,
+        onSuccess: function() {
+            statusDiv.innerText = "🟢 สมองกลทำงานออนไลน์สำเร็จ! (MQTT Connected)";
+            statusDiv.style.backgroundColor = "#22c55e";
+            addLog("เริ่มทำการส่งข้อมูลค่าความผิดปกติไปยังโมเดล 3D...");
+            
+            let toggle = true;
+
+            // ส่งข้อมูลสลับชิ้นส่วนอัตโนมัติทุกๆ 5 วินาที
+            setInterval(() => {
+                let payload = {};
+
+                if (toggle) {
+                    payload = {
+                        "component": "Motor",
+                        "trp": 45,
+                        "dle": 62,
+                        "qrap": "⚠️ [Auto-Log] มอเตอร์สายพานความร้อนสูงเกินพิกัด (Overheat)"
+                    };
+                } else {
+                    payload = {
+                        "component": "Controller",
+                        "trp": 58,
+                        "dle": 69,
+                        "qrap": "⚠️ [Auto-Log] ตู้คอนโทรลหลักตรวจพบกระแสไฟกระชาก (Voltage Surge)"
+                    };
+                }
+
+                // แปลงข้อมูลจาก Object ให้กลายเป็น String JSON ก่อนดีดออกไปในอากาศ
+                const jsonString = JSON.stringify(payload);
+                
+                let message = new Paho.MQTT.Message(jsonString);
+                message.destinationName = topic;
+                client.send(message);
+
+                addLog(`🚀 Broadcasted -> [${payload.component}]`);
+                toggle = !toggle; // สลับชิ้นส่วนในรอบถัดไป
+            }, 5000);
+        }
+    });
+</script>
+</body>
+</html>
