@@ -25,7 +25,7 @@
         button { background-color: #475569; color: white; border: none; padding: 14px; border-radius: 6px; font-weight: bold; cursor: not-allowed; font-size: 14px; margin-top: 10px; transition: 0.2s; }
         .btn-reset { background: #334155 !important; margin-top: 4px; cursor: pointer !important; }
 
-        /* คอลัมน์กลาง: หน้าจอ 3D คลีนๆ */
+        /* คอลัมน์กลาง: หน้าจอ 3D */
         .panel-visual { position: relative; background-color: #020617; flex: 1; height: 100%; overflow: hidden; }
         #canvas3d { width: 100%; height: 100%; display: block; }
 
@@ -63,8 +63,9 @@
         <div class="form-group">
             <label>Select Problem Component</label>
             <select id="input-component">
+                <option value="Button console">Button console (แผงปุ่มกดคอนโซล)</option>
+                <option value="Controller">Controller (ตู้คอนโทรลระบบ)</option>
                 <option value="Hydraulic Press">Hydraulic Press (เครื่องปั๊มไฮดรอลิก)</option>
-                <option value="2P105">Control Box 2P105 (ตู้คอนโทรลระบบ)</option>
             </select>
         </div>
         <div class="form-group">
@@ -112,7 +113,6 @@
 </div>
 
 <script type="module">
-    // อัปเดตการ Import Spline Runtime สำหรับเวอร์ชันใหม่
     import { Application } from 'https://unpkg.com/@splinetool/runtime@1.12.95/build/runtime.js';
 
     let splineApp = null;
@@ -122,12 +122,11 @@
     const canvas = document.getElementById('canvas3d');
     const app = new Application(canvas);
 
-    // โหลดโมเดล 3D แบบ Async/Then ตามโครงสร้างเวอร์ชันใหม่
+    // โหลดโมเดล 3D แบบ Async
     app.load('https://prod.spline.design/te8GgdA1x08LzabU/scene.splinecode')
         .then(() => {
-            splineApp = app; // ผูก Instance ของแอปเข้ากับตัวแปรหลัก
+            splineApp = app; 
             
-            // เปิดสิทธิ์การใช้งานปุ่มเมื่อโมเดลพร้อมควบคุม
             const submitBtn = document.getElementById('btn-submit');
             if (submitBtn) {
                 submitBtn.disabled = false;
@@ -140,58 +139,59 @@
             document.getElementById('system-status').style.backgroundColor = '#22c55e';
             document.getElementById('log-text').innerText = "✅ 3D Engine Ready. Connecting to MQTT Cloud...";
             
-            // เรียกฟังก์ชันซ่อนวัตถุเป้าหมายในตอนแรก หรือตั้งค่าเริ่มต้น
             hideAllAlerts();
-            
-            // เปิดท่อระบบสื่อสารข้อมูล MQTT 
             initMQTTReceiver();
         })
         .catch((err) => {
             document.getElementById('log-text').innerText = "❌ Load Error: " + err.message;
         });
 
-    // ฟังก์ชันตั้งค่าเริ่มต้นหรือสั่งการซ่อนวัตถุในตอนแรกตามชื่อเลเยอร์ใน Spline
+    // ฟังก์ชันคืนค่าเริ่มต้นให้กับ Objects ทั้ง 3 ชิ้นในโมเดล Spline
     function hideAllAlerts() {
         if (!splineApp) return;
         try {
-            const press3D = splineApp.findObjectByName('Hydraulic Press');
-            const box3D = splineApp.findObjectByName('2P105');
+            const btnConsole = splineApp.findObjectByName('Button console');
+            const controller = splineApp.findObjectByName('Controller');
+            const hydraulic  = splineApp.findObjectByName('Hydraulic Press');
             
-            // ตั้งค่าให้อยู่ในสภาวะปกติพร้อมรับคำสั่ง (สามารถแก้เป็น false ได้หากต้องการซ่อนตั้งแต่ต้น)
-            if (press3D) press3D.visible = true;
-            if (box3D) box3D.visible = true;
+            if (btnConsole) btnConsole.visible = true;
+            if (controller) controller.visible = true;
+            if (hydraulic)  hydraulic.visible = true;
         } catch(e) {
             console.log("Error resetting states:", e);
         }
     }
 
-    // ฟังก์ชันประมวลผลข้อมูลหลักและเริ่มคำสั่งควบคุมโมเดลให้กระพริบ
+    // ฟังก์ชันหลักสำหรับรับ Payload และประมวลผลการกระพริบชิ้นส่วนย่อย
     window.processTwinData = function(data) {
         if (!splineApp) return;
 
         const comp   = data.component; 
-        const compTH = comp === 'Hydraulic Press' ? 'เครื่องปั๊มไฮดรอลิก' : 'ตู้คอนโทรลระบบ 2P105';
+        
+        // แมปชื่อภาษาไทยให้ตรงกับทั้ง 3 ชิ้นส่วน
+        let compTH = comp;
+        if (comp === 'Button console') compTH = 'แผงปุ่มกดคอนโซล';
+        else if (comp === 'Controller') compTH = 'ตู้คอนโทรลระบบ';
+        else if (comp === 'Hydraulic Press') compTH = 'เครื่องปั๊มไฮดรอลิก';
+
         const trp    = data.trp || 0;
         const dle    = data.dle || 0;
         const qrap   = data.qrap || "";
 
-        // ล้าง Loop การกระพริบเดิมออกก่อนเริ่มรอบใหม่
         if (blinkInterval) clearInterval(blinkInterval);
 
         document.getElementById('system-status').innerText = 'CRITICAL ANOMALY: ' + comp.toUpperCase();
         document.getElementById('system-status').style.backgroundColor = '#ef4444';
 
         try {
-            // คืนค่าพื้นฐานให้เลเยอร์อื่นก่อน
-            hideAllAlerts();
+            hideAllAlerts(); // รีเซ็ตตัวอื่นให้แสดงผลปกติก่อน
             
-            // ค้นหา Object ในโมเดล 3D แบบเจาะจงชื่อเลเยอร์ตรงๆ
             const targetObject = splineApp.findObjectByName(comp);
             
             if (targetObject) {
                 document.getElementById('log-text').innerText = `🔴 Signal Received: Blinking Active on [${comp}]`;
                 
-                // สั่งกระพริบโดยสลับสถานะสิทธิ์ .visible ทุกๆ 400ms
+                // เริ่มลูปกระพริบวัตถุที่เลือกผ่าน Property .visible ใน Runtime เวอร์ชันใหม่
                 blinkInterval = setInterval(() => {
                     targetObject.visible = !targetObject.visible;
                 }, 400);
@@ -202,7 +202,7 @@
             console.error(error);
         }
 
-        // อัปเดตสไลด์สรุปผลวิเคราะห์ด้านขวามือ
+        // แสดงผลลัพธ์บน Presentation Panel ฝั่งขวา
         document.getElementById('standby-text').style.display = 'none';
         document.getElementById('s1').innerText = `• ตรวจพบปัญหาวิกฤตที่ชิ้นส่วนย่อย: ${compTH} (${comp})\n• รายละเอียดจาก QRAP: "${qrap}"\n• จัดหมวดหมู่: Equipment Breakdown`;
         document.getElementById('s2').innerText = `• ค่า TRP ปัจจุบัน: ${trp}%\n• DLE ตกเหลือ ${dle}% เนื่องจาก Waiting Time\n• ประเภทความสูญเสีย: Toploss - Unplanned Maintenance`;
@@ -211,7 +211,6 @@
         ['slide-1','slide-2','slide-3'].forEach(id => document.getElementById(id).classList.add('active'));
     };
 
-    // ฟังก์ชันเชื่อมโยงรับค่า String JSON จาก Console ภายนอก
     window.connectTwin = function(jsonString) {
         try {
             const data = JSON.parse(jsonString);
@@ -221,7 +220,6 @@
         }
     };
 
-    // เชื่อมต่อ MQTT Broker คลาวด์ภายนอกเพื่อรอรับคำสั่งส่งเข้าโมเดล
     function initMQTTReceiver() {
         const client = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), "/mqtt", "visual_rcv_" + parseInt(Math.random() * 100));
 
@@ -248,7 +246,7 @@
         });
     }
 
-    // การทำงานของปุ่มกดแมนนวล Submit บนหน้าเว็บ
+    // จัดการ Event เมื่อกดปุ่มส่งข้อมูลแมนนวลบนหน้าเว็บ
     window.doSubmit = function() {
         const payload = {
             component: document.getElementById('input-component').value,
@@ -259,7 +257,7 @@
         window.processTwinData(payload);
     };
 
-    // การทำงานของปุ่มรีเซ็ตสภาวะของหน้าจอและหยุดกระพริบโมเดล 3D
+    // รีเซ็ตสถานะทั้งหมดกลับเป็นจุดเริ่มต้น
     window.doReset = function() {
         if (blinkInterval) clearInterval(blinkInterval);
         
