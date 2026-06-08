@@ -139,6 +139,7 @@
             document.getElementById('system-status').style.backgroundColor = '#22c55e';
             document.getElementById('log-text').innerText = "✅ 3D Engine Ready. Connecting to MQTT Cloud...";
             
+            // ตอนโหลดเสร็จครั้งแรก สั่งซ่อนทุก Object ทันทีตามเงื่อนไขใหม่
             hideAllAlerts();
             initMQTTReceiver();
         })
@@ -146,7 +147,7 @@
             document.getElementById('log-text').innerText = "❌ Load Error: " + err.message;
         });
 
-    // ฟังก์ชันคืนค่าเริ่มต้นให้กับ Objects ทั้ง 3 ชิ้นในโมเดล Spline
+    // ปรับปรุงฟังก์ชัน: สั่งปิดการมองเห็น (visible = false) ของทุก Object ตั้งแต่เริ่มแรก
     function hideAllAlerts() {
         if (!splineApp) return;
         try {
@@ -154,21 +155,20 @@
             const controller = splineApp.findObjectByName('Controller');
             const hydraulic  = splineApp.findObjectByName('Hydraulic Press');
             
-            if (btnConsole) btnConsole.visible = true;
-            if (controller) controller.visible = true;
-            if (hydraulic)  hydraulic.visible = true;
+            if (btnConsole) btnConsole.visible = false;
+            if (controller) controller.visible = false;
+            if (hydraulic)  hydraulic.visible = false;
         } catch(e) {
             console.log("Error resetting states:", e);
         }
     }
 
-    // ฟังก์ชันหลักสำหรับรับ Payload และประมวลผลการกระพริบชิ้นส่วนย่อย
+    // ฟังก์ชันประมวลผลข้อมูลและสั่งควบคุมเฉพาะชิ้นส่วนที่เลือกให้ปรากฏตัวและกระพริบ
     window.processTwinData = function(data) {
         if (!splineApp) return;
 
         const comp   = data.component; 
         
-        // แมปชื่อภาษาไทยให้ตรงกับทั้ง 3 ชิ้นส่วน
         let compTH = comp;
         if (comp === 'Button console') compTH = 'แผงปุ่มกดคอนโซล';
         else if (comp === 'Controller') compTH = 'ตู้คอนโทรลระบบ';
@@ -184,14 +184,15 @@
         document.getElementById('system-status').style.backgroundColor = '#ef4444';
 
         try {
-            hideAllAlerts(); // รีเซ็ตตัวอื่นให้แสดงผลปกติก่อน
+            // ซ่อนทุกอย่างไว้ก่อน เพื่อล้างสเตทของรอบที่แล้ว
+            hideAllAlerts(); 
             
             const targetObject = splineApp.findObjectByName(comp);
             
             if (targetObject) {
                 document.getElementById('log-text').innerText = `🔴 Signal Received: Blinking Active on [${comp}]`;
                 
-                // เริ่มลูปกระพริบวัตถุที่เลือกผ่าน Property .visible ใน Runtime เวอร์ชันใหม่
+                // สั่งให้เริ่มทำสเตทกระพริบเฉพาะ Object ชิ้นที่เลือก
                 blinkInterval = setInterval(() => {
                     targetObject.visible = !targetObject.visible;
                 }, 400);
@@ -221,7 +222,7 @@
     };
 
     function initMQTTReceiver() {
-        const client = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), "/mqtt", "visual_rcv_" + parseInt(Math.random() * 100));
+        const client = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), Topic = "/mqtt", "visual_rcv_" + parseInt(Math.random() * 100));
 
         client.onConnectionLost = function() {
             document.getElementById('log-text').innerText = "🔌 MQTT Connection Lost. Reconnecting...";
@@ -246,7 +247,6 @@
         });
     }
 
-    // จัดการ Event เมื่อกดปุ่มส่งข้อมูลแมนนวลบนหน้าเว็บ
     window.doSubmit = function() {
         const payload = {
             component: document.getElementById('input-component').value,
@@ -257,7 +257,7 @@
         window.processTwinData(payload);
     };
 
-    // รีเซ็ตสถานะทั้งหมดกลับเป็นจุดเริ่มต้น
+    // ปุ่มรีเซ็ตสถานะ ให้สั่งซ่อนวัตถุทุกชิ้นกลับไปสภาวะเงียบสงบเหมือนตอนเริ่มรันเว็บ
     window.doReset = function() {
         if (blinkInterval) clearInterval(blinkInterval);
         
@@ -267,7 +267,7 @@
         document.getElementById('standby-text').style.display  = 'block';
         
         ['slide-1','slide-2','slide-3'].forEach(id => document.getElementById(id).classList.remove('active'));
-        hideAllAlerts();
+        hideAllAlerts(); // ซ่อนทุกชิ้นส่วนตามเดิม
     };
 </script>
 </body>
